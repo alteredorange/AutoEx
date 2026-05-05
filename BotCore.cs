@@ -217,14 +217,9 @@ namespace AutoExile
             if (!string.IsNullOrEmpty(savedBossType) && _bossMode.EncounterNames.Contains(savedBossType))
                 Settings.Boss.BossType.Value = savedBossType;
 
-            // Populate mode dropdown and restore saved selection
-            // Save value before SetListValues — it resets Value to first item
-            var savedMode = Settings.ActiveMode?.Value;
+            // Populate mode dropdown and always default to Mapping
             Settings.ActiveMode.SetListValues(_modes.Keys.ToList());
-            if (!string.IsNullOrEmpty(savedMode) && _modes.ContainsKey(savedMode))
-                SetMode(savedMode);
-            else
-                SetMode("Idle");
+            SetMode("Mapping");
 
             // React to dropdown changes
             Settings.ActiveMode.OnValueSelected += (name) =>
