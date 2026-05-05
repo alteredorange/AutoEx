@@ -84,6 +84,7 @@ namespace AutoExile
         private HeistMode? _heistMode;
         private LabyrinthMode? _labyrinthMode;
         private BossMode? _bossMode;
+        private MappingMode? _mappingMode;
 
         // Area change tracking for tile map reload
         private string _lastAreaName = "";
@@ -166,6 +167,8 @@ namespace AutoExile
             RegisterMode(new IdleMode());
             _followerMode = new FollowerMode();
             RegisterMode(_followerMode);
+            _mappingMode = new MappingMode();
+            RegisterMode(_mappingMode);
             _blightMode = new BlightMode();
             RegisterMode(_blightMode);
             _simulacrumMode = new SimulacrumMode();
@@ -751,6 +754,15 @@ namespace AutoExile
                 _followerMode.LootNearLeaderOnly = Settings.Follower.LootNearLeaderOnly.Value;
             }
 
+            // Sync mapping mode settings
+            if (_mappingMode != null)
+            {
+                _mappingMode.EnableCombat = Settings.Mapping.EnableCombat.Value;
+                _mappingMode.EnableLoot = Settings.Mapping.EnableLoot.Value;
+                _mappingMode.LootRarityThreshold = Settings.Mapping.LootRarityThreshold.Value;
+                _mappingMode.NavigationStopDistance = Settings.Mapping.NavigationStopDistance.Value;
+            }
+
             // Let the active mode decide what to do (may set up navigation paths)
             _mode.Tick(_ctx);
 
@@ -800,26 +812,26 @@ namespace AutoExile
 
             // Runtime line — shows elapsed (always) + remaining (when limit set).
             // Pause time is excluded automatically by RuntimeTracker.
-            var maxMin   = Settings.Run.MaxRuntimeMinutes.Value;
-            var elapsed  = _runtime.ActiveDuration;
+            var maxMin = Settings.Run.MaxRuntimeMinutes.Value;
+            var elapsed = _runtime.ActiveDuration;
             var elapsedStr = $"{(int)elapsed.TotalHours}:{elapsed.Minutes:D2}";
             string runtimeText;
             SharpDX.Color runtimeColor;
             if (maxMin <= 0)
             {
-                runtimeText  = $"Runtime: {elapsedStr} (no limit)";
+                runtimeText = $"Runtime: {elapsedStr} (no limit)";
                 runtimeColor = SharpDX.Color.LightGray;
             }
             else
             {
                 var remaining = _runtime.Remaining(maxMin);
                 var remStr = $"{(int)remaining.TotalHours}:{remaining.Minutes:D2}";
-                runtimeText  = $"Runtime: {elapsedStr} / {maxMin / 60}:{(maxMin % 60):D2}  (stopping in {remStr})";
+                runtimeText = $"Runtime: {elapsedStr} / {maxMin / 60}:{(maxMin % 60):D2}  (stopping in {remStr})";
                 // Amber at last 10%, red at last 5 minutes
                 var pctLeft = (double)remaining.TotalMinutes / maxMin;
                 runtimeColor = remaining.TotalMinutes < 5 ? SharpDX.Color.Red
-                            :  pctLeft < 0.10              ? SharpDX.Color.Orange
-                            :                                SharpDX.Color.LightGray;
+                            : pctLeft < 0.10 ? SharpDX.Color.Orange
+                            : SharpDX.Color.LightGray;
             }
             Graphics.DrawText(runtimeText, new Vector2(100, 96), runtimeColor);
 
@@ -1126,11 +1138,11 @@ namespace AutoExile
                     MapsCompleted = _lootTracker.MapsCompleted,
                     SessionDuration = _lootTracker.SessionDuration.TotalSeconds > 0
                         ? _lootTracker.SessionDuration.ToString(@"hh\:mm\:ss") : "",
-                    RuntimeActiveSeconds    = (int)_runtime.ActiveDuration.TotalSeconds,
+                    RuntimeActiveSeconds = (int)_runtime.ActiveDuration.TotalSeconds,
                     RuntimeRemainingSeconds = Settings.Run.MaxRuntimeMinutes.Value > 0
                         ? (int)_runtime.Remaining(Settings.Run.MaxRuntimeMinutes.Value).TotalSeconds
                         : 0,
-                    RuntimeMaxMinutes       = Settings.Run.MaxRuntimeMinutes.Value,
+                    RuntimeMaxMinutes = Settings.Run.MaxRuntimeMinutes.Value,
                     // Simulacrum stats
                     SimWave = _simulacrumMode?.State.CurrentWave ?? 0,
                     SimWaveActive = _simulacrumMode?.State.IsWaveActive ?? false,
@@ -2073,19 +2085,19 @@ namespace AutoExile
                 // include them as extra options instead of clearing them. Without
                 // this, opening a stash that doesn't have your supplies tab visible
                 // (premium tabs, scrolled offscreen) would silently wipe the setting.
-                var savedDump     = Settings.Stash.DumpTabName.Value;
+                var savedDump = Settings.Stash.DumpTabName.Value;
                 var savedFragment = Settings.Stash.FragmentTabName.Value;
                 var savedSupplies = Settings.Stash.MappingSuppliesTabName.Value;
 
-                var dumpOptions     = WithSavedOption(options, savedDump);
+                var dumpOptions = WithSavedOption(options, savedDump);
                 var fragmentOptions = WithSavedOption(options, savedFragment);
                 var suppliesOptions = WithSavedOption(options, savedSupplies);
 
                 Settings.Stash.DumpTabName.SetListValues(dumpOptions);
                 Settings.Stash.FragmentTabName.SetListValues(fragmentOptions);
                 Settings.Stash.MappingSuppliesTabName.SetListValues(suppliesOptions);
-                Settings.Stash.DumpTabName.Value            = savedDump;
-                Settings.Stash.FragmentTabName.Value        = savedFragment;
+                Settings.Stash.DumpTabName.Value = savedDump;
+                Settings.Stash.FragmentTabName.Value = savedFragment;
                 Settings.Stash.MappingSuppliesTabName.Value = savedSupplies;
             }
             catch { /* stash API can throw during zone transitions */ }

@@ -81,6 +81,10 @@ namespace AutoExile
 
         public FollowerSettings Follower { get; set; } = new FollowerSettings();
 
+        // --- Mapping (mode-specific) ---
+
+        public MappingSettings Mapping { get; set; } = new MappingSettings();
+
         // --- Blight (mode-specific) ---
 
         public BlightSettings Blight { get; set; } = new BlightSettings();
@@ -339,6 +343,22 @@ namespace AutoExile
 
             [Menu("Loot While Near Leader Only", "Only loot when within follow distance of leader (don't wander off to loot).")]
             public ToggleNode LootNearLeaderOnly { get; set; } = new ToggleNode(true);
+        }
+
+        [Submenu(CollapsedByDefault = true)]
+        public class MappingSettings
+        {
+            [Menu("Enable Combat", "Fight monsters while mapping.")]
+            public ToggleNode EnableCombat { get; set; } = new ToggleNode(true);
+
+            [Menu("Enable Loot", "Pick up filtered loot while mapping.")]
+            public ToggleNode EnableLoot { get; set; } = new ToggleNode(true);
+
+            [Menu("Loot Rarity", "Minimum rarity to pickup (0=normal, 1=magic, 2=rare, 3=unique).")]
+            public RangeNode<int> LootRarityThreshold { get; set; } = new RangeNode<int>(2, 0, 3);
+
+            [Menu("Stop Distance", "Distance to destination before stopping (grid units).")]
+            public RangeNode<int> NavigationStopDistance { get; set; } = new RangeNode<int>(5, 1, 20);
         }
 
         [Submenu(CollapsedByDefault = true)]
