@@ -554,34 +554,45 @@ namespace AutoExile.Systems
                 bool isTargetable = !isWalkable && tgtGrid != null &&
                     Pathfinding.HasTargetingLOS(tgtGrid, px, py, (int)entity.GridPosNum.X, (int)entity.GridPosNum.Y);
 
-                // Skip unreachable monsters (can't walk to AND can't shoot)
-                if (pfGrid != null && !isWalkable && !isTargetable)
+                // When ForceInCombat is set the mode has already confirmed targets are in range.
+                // Still let LOS-blocked monsters contribute to BestTarget so Enemy-role skills
+                // have a position to aim at (ground-AoE / projectile skills handle hit detection).
+                bool losBlocked = pfGrid != null && !isWalkable && !isTargetable;
+
+                if (losBlocked)
                 {
-                    // Track nearest in-range monster blocked by LOS for repositioning
+                    // Track nearest blocked position for repositioning when NOT in force-combat.
                     if (dist < nearestBlockedDist)
                     {
                         nearestBlockedDist = dist;
                         nearestBlockedPos = entity.GridPosNum;
                     }
-                    continue;
+
+                    // In ForceInCombat mode: include this entity for BestTarget scoring only
+                    // (don't increment combatCount — that stays LOS-only for InCombat logic).
+                    if (!Profile.ForceInCombat)
+                        continue;
                 }
-
-                combatCount++;
-                combatSum += entity.GridPosNum;
-                _nearbyMonsterPositions.Add(entity.GridPosNum);
-
-                // Rarity-weighted density for detour decisions (separate from cluster scoring)
-                weightedDensity += entity.Rarity switch
+                else
                 {
-                    MonsterRarity.Magic => 2,
-                    MonsterRarity.Rare => 5,
-                    MonsterRarity.Unique => 8,
-                    _ => 1
-                };
+                    // Monster is reachable — counts toward InCombat threshold.
+                    combatCount++;
+                    combatSum += entity.GridPosNum;
+                    _nearbyMonsterPositions.Add(entity.GridPosNum);
 
-                // Track walkable monsters separately for positioning (don't walk into gaps)
-                if (isWalkable || pfGrid == null)
-                    _walkableMonsterWeighted.Add((entity.GridPosNum, rarityWeight));
+                    // Rarity-weighted density for detour decisions (separate from cluster scoring)
+                    weightedDensity += entity.Rarity switch
+                    {
+                        MonsterRarity.Magic => 2,
+                        MonsterRarity.Rare => 5,
+                        MonsterRarity.Unique => 8,
+                        _ => 1
+                    };
+
+                    // Track walkable monsters separately for positioning (don't walk into gaps)
+                    if (isWalkable || pfGrid == null)
+                        _walkableMonsterWeighted.Add((entity.GridPosNum, rarityWeight));
+                }
 
                 float score = rarityWeight - dist * 0.1f;
 
@@ -600,6 +611,11 @@ namespace AutoExile.Systems
                     // scaling down with distance. This dominates over rarity for nearby threats.
                     score += MathF.Max(0f, 60f - distToObjective);
                 }
+
+                // LOS-blocked entities get a score penalty to prefer reachable targets,
+                // but can still win if no reachable targets exist.
+                if (losBlocked)
+                    score -= 50f;
 
                 if (score > bestScore)
                 {
@@ -1109,8 +1125,12 @@ namespace AutoExile.Systems
                 if (SuppressTargetedSkills && (entry.Role == SkillRole.Enemy || entry.Role == SkillRole.Corpse))
                     continue;
 
-                // Targeting prerequisite: Enemy needs a target, Corpse needs a corpse
-                if (entry.Role == SkillRole.Enemy && (BestTarget == null || !InCombat)) continue;
+                // Targeting prerequisite: Enemy needs a target, Corpse needs a corpse.
+                // ForceInCombat mode: BestTarget may be null if all in-range monsters failed
+                // strict LOS (they still have positions). GetSkillTargetGrid falls back to
+                // PackCenter so the skill still fires toward the monster cluster.
+                if (entry.Role == SkillRole.Enemy && !InCombat) continue;
+                if (entry.Role == SkillRole.Enemy && BestTarget == null && !Profile.ForceInCombat) continue;
                 if (entry.Role == SkillRole.Corpse && !NearestCorpse.HasValue) continue;
 
                 // All "when to fire" logic is in conditions
@@ -1199,7 +1219,9 @@ namespace AutoExile.Systems
         {
             return entry.Role switch
             {
-                SkillRole.Enemy => BestTarget?.GridPosNum,
+                // In ForceInCombat mode, fall back to PackCenter when BestTarget is null
+                // so ground-targeted AoE (Rolling Magma, etc.) still fires at the cluster.
+                SkillRole.Enemy => BestTarget?.GridPosNum ?? (Profile.ForceInCombat && PackCenter != Vector2.Zero ? PackCenter : null),
                 SkillRole.Corpse => NearestCorpse,
                 SkillRole.Self => null,
                 _ => null
@@ -1696,11 +1718,31 @@ namespace AutoExile.Systems
             }
 
             // ── Attack connectivity — detect zero-damage (unreachable) ──
+            // Skip entirely when ForceInCombat is active: the mode has already confirmed
+            // targets are in range. Slow projectile skills (Rolling Magma) and DoTs may
+            // take many seconds before HP visibly changes — falsely blacklisting them
+            // removes ALL monsters from the scan and breaks combat entirely.
+            if (Profile.ForceInCombat)
+            {
+                // Still reset timer to avoid stale state if mode switches to Aggressive later.
+                _attackConnectivityStart = DateTime.Now;
+                _lastAttackTargetHp = targetHp;
+                return;
+            }
+
             // New target — start tracking
             if (targetId != _lastAttackTargetId)
             {
                 _lastAttackTargetId = targetId;
                 _lastAttackTargetHp = targetHp;
+                _attackConnectivityStart = DateTime.Now;
+                return;
+            }
+
+            // Reset timer whenever a skill was just cast — projectile may be in flight.
+            // BaseAttackConnectTimeoutSec starts from the last cast, not the last HP tick.
+            if ((DateTime.Now - _lastSkillUseAt).TotalSeconds < BaseAttackConnectTimeoutSec)
+            {
                 _attackConnectivityStart = DateTime.Now;
                 return;
             }
