@@ -85,6 +85,7 @@ namespace AutoExile
         private LabyrinthMode? _labyrinthMode;
         private BossMode? _bossMode;
         private MappingMode? _mappingMode;
+        private CombatMode? _combatMode;
 
         // Area change tracking for tile map reload
         private string _lastAreaName = "";
@@ -169,6 +170,8 @@ namespace AutoExile
             RegisterMode(_followerMode);
             _mappingMode = new MappingMode();
             RegisterMode(_mappingMode);
+            _combatMode = new CombatMode();
+            RegisterMode(_combatMode);
             _blightMode = new BlightMode();
             RegisterMode(_blightMode);
             _simulacrumMode = new SimulacrumMode();
@@ -216,6 +219,17 @@ namespace AutoExile
             Settings.Boss.BossType.SetListValues(_bossMode.EncounterNames.ToList());
             if (!string.IsNullOrEmpty(savedBossType) && _bossMode.EncounterNames.Contains(savedBossType))
                 Settings.Boss.BossType.Value = savedBossType;
+
+            // Populate combat dropdown values
+            var savedCombatStyle = Settings.Combat.Style.Value;
+            Settings.Combat.Style.SetListValues(new[] { "Lazy", "Aggressive" }.ToList());
+            if (!string.IsNullOrEmpty(savedCombatStyle) && (savedCombatStyle == "Lazy" || savedCombatStyle == "Aggressive"))
+                Settings.Combat.Style.Value = savedCombatStyle;
+
+            var savedCombatTarget = Settings.Combat.TargetType.Value;
+            Settings.Combat.TargetType.SetListValues(new[] { "Normal", "Rare", "Unique" }.ToList());
+            if (!string.IsNullOrEmpty(savedCombatTarget) && (savedCombatTarget == "Normal" || savedCombatTarget == "Rare" || savedCombatTarget == "Unique"))
+                Settings.Combat.TargetType.Value = savedCombatTarget;
 
             // Populate mode dropdown and restore saved selection
             // Save value before SetListValues — it resets Value to first item
@@ -800,6 +814,27 @@ namespace AutoExile
                 }
                 else if (_lootTracker.IsActive)
                     _lootTracker.StopSession();
+            }
+
+            if (Settings.Combat.CombatStyleToggle.PressedOnce())
+            {
+                Settings.Combat.Style.Value = Settings.Combat.Style.Value == "Aggressive" ? "Lazy" : "Aggressive";
+                LogMessage($"[AutoExile] Combat style set to {Settings.Combat.Style.Value}");
+            }
+            if (Settings.Combat.TargetNormalHotkey.PressedOnce())
+            {
+                Settings.Combat.TargetType.Value = "Normal";
+                LogMessage("[AutoExile] Combat target type set to Normal");
+            }
+            if (Settings.Combat.TargetRareHotkey.PressedOnce())
+            {
+                Settings.Combat.TargetType.Value = "Rare";
+                LogMessage("[AutoExile] Combat target type set to Rare");
+            }
+            if (Settings.Combat.TargetUniqueHotkey.PressedOnce())
+            {
+                Settings.Combat.TargetType.Value = "Unique";
+                LogMessage("[AutoExile] Combat target type set to Unique");
             }
 
             UpdateDebugRangeCircle();

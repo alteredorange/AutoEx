@@ -85,6 +85,10 @@ namespace AutoExile
 
         public MappingSettings Mapping { get; set; } = new MappingSettings();
 
+        // --- Combat (mode-specific) ---
+
+        public CombatSettings Combat { get; set; } = new CombatSettings();
+
         // --- Blight (mode-specific) ---
 
         public BlightSettings Blight { get; set; } = new BlightSettings();
@@ -359,6 +363,31 @@ namespace AutoExile
 
             [Menu("Stop Distance", "Distance to destination before stopping (grid units).")]
             public RangeNode<int> NavigationStopDistance { get; set; } = new RangeNode<int>(5, 1, 20);
+        }
+
+        [Submenu(CollapsedByDefault = true)]
+        public class CombatSettings
+        {
+            [Menu("Enable Combat", "Enable combat when Combat mode is active.")]
+            public ToggleNode EnableCombat { get; set; } = new ToggleNode(true);
+
+            [Menu("Combat Style", "Lazy attacks only when monsters are already nearby; Aggressive pursues monsters to fight.")]
+            public ListNode Style { get; set; } = new ListNode { Value = "Lazy" };
+
+            [Menu("Monster Target Type", "Normal attacks all monsters; Rare attacks only rares and uniques; Unique attacks only uniques.")]
+            public ListNode TargetType { get; set; } = new ListNode { Value = "Normal" };
+
+            [Menu("Combat Style Toggle", "Hotkey to switch between lazy and aggressive combat behavior.")]
+            public HotkeyNode CombatStyleToggle { get; set; } = new HotkeyNode(Keys.D6);
+
+            [Menu("Target Normal Monsters", "Hotkey to select normal monsters for combat.")]
+            public HotkeyNode TargetNormalHotkey { get; set; } = new HotkeyNode(Keys.D7);
+
+            [Menu("Target Rare Monsters", "Hotkey to select rare and above monsters for combat.")]
+            public HotkeyNode TargetRareHotkey { get; set; } = new HotkeyNode(Keys.D8);
+
+            [Menu("Target Unique Monsters", "Hotkey to select unique monsters for combat.")]
+            public HotkeyNode TargetUniqueHotkey { get; set; } = new HotkeyNode(Keys.D9);
         }
 
         [Submenu(CollapsedByDefault = true)]
