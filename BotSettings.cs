@@ -377,6 +377,9 @@ namespace AutoExile
             [Menu("Monster Target Type", "Normal attacks all monsters; Rare attacks only rares and uniques; Unique attacks only uniques.")]
             public ListNode TargetType { get; set; } = new ListNode { Value = "Normal" };
 
+            [Menu("Show Combat HUD", "Display combat target diagnostics while Combat mode is active.")]
+            public ToggleNode ShowHud { get; set; } = new ToggleNode(false);
+
             [Menu("Combat Style Toggle", "Hotkey to switch between lazy and aggressive combat behavior.")]
             public HotkeyNode CombatStyleToggle { get; set; } = new HotkeyNode(Keys.D6);
 

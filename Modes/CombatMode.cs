@@ -18,6 +18,10 @@ namespace AutoExile.Modes
 
         private string _status = "Combat mode ready";
         private string _decision = "";
+        private int _allowedTargetCount;
+        private int _allowedTargetInRangeCount;
+        private CombatModeStyle _activeStyle = CombatModeStyle.Lazy;
+        private CombatModeMonsterType _activeFilter = CombatModeMonsterType.Normal;
 
         public void OnEnter(BotContext ctx)
         {
@@ -46,8 +50,12 @@ namespace AutoExile.Modes
             var monsterFilter = ParseTargetType(combatSettings.TargetType.Value);
             var combatRange = ctx.Settings.Build.CombatRange.Value;
 
-            var hasAllowedTarget = HasAllowedTarget(gc, monsterFilter, allowDormant: style == CombatModeStyle.Aggressive);
-            var hasAllowedTargetInRange = HasAllowedTarget(gc, monsterFilter, allowDormant: false, range: combatRange);
+            _activeStyle = style;
+            _activeFilter = monsterFilter;
+            _allowedTargetCount = CountAllowedTargets(gc, monsterFilter, allowDormant: style == CombatModeStyle.Aggressive);
+            _allowedTargetInRangeCount = CountAllowedTargets(gc, monsterFilter, allowDormant: false, range: combatRange);
+            var hasAllowedTarget = _allowedTargetCount > 0;
+            var hasAllowedTargetInRange = _allowedTargetInRangeCount > 0;
 
             bool shouldFight = combatSettings.EnableCombat.Value &&
                 (style == CombatModeStyle.Aggressive ? hasAllowedTarget : hasAllowedTargetInRange);
@@ -71,15 +79,21 @@ namespace AutoExile.Modes
             ctx.Combat.SuppressTargetedSkills = ctx.Interaction.IsBusy;
             ctx.Combat.Tick(ctx);
 
-            _status = shouldFight ? (style == CombatModeStyle.Aggressive ? "Aggressive combat" : "Lazy combat")
-                                  : "Waiting for allowed targets";
-
             if (!combatSettings.EnableCombat.Value)
+            {
+                _status = "Combat disabled";
                 _decision = "combat disabled";
+            }
             else if (style == CombatModeStyle.Aggressive)
+            {
+                _status = hasAllowedTarget ? $"Aggressive combat ({_allowedTargetCount} allowed targets)" : "Waiting for allowed targets";
                 _decision = hasAllowedTarget ? "pursuing allowed monsters" : "no allowed monsters present";
+            }
             else
+            {
+                _status = hasAllowedTargetInRange ? $"Lazy combat ({_allowedTargetInRangeCount} in range)" : "Waiting for allowed targets";
                 _decision = hasAllowedTargetInRange ? "attacking nearby monsters" : "waiting for nearby targets";
+            }
         }
 
         private static CombatModeStyle ParseStyle(string value)
@@ -101,9 +115,10 @@ namespace AutoExile.Modes
             };
         }
 
-        private static bool HasAllowedTarget(GameController gc, CombatModeMonsterType filter, bool allowDormant, float range = float.MaxValue)
+        private static int CountAllowedTargets(GameController gc, CombatModeMonsterType filter, bool allowDormant, float range = float.MaxValue)
         {
             var playerGrid = gc.Player?.GridPosNum ?? Vector2.Zero;
+            var count = 0;
             foreach (var entity in gc.EntityListWrapper.OnlyValidEntities.Where(e => e.Type == EntityType.Monster && e.IsHostile && e.IsAlive))
             {
                 if (range < float.MaxValue && Vector2.Distance(entity.GridPosNum, playerGrid) > range)
@@ -113,9 +128,32 @@ namespace AutoExile.Modes
                     continue;
 
                 if (IsAllowedByFilter(entity.Rarity, filter))
-                    return true;
+                    count++;
             }
-            return false;
+            return count;
+        }
+
+        private void RenderHud(BotContext ctx)
+        {
+            var gfx = ctx.Graphics;
+            if (gfx == null) return;
+            var settings = ctx.Settings.Combat;
+            if (!settings.ShowHud.Value) return;
+
+            var x = 100f;
+            var y = 180f;
+            var lineHeight = 18f;
+            gfx.DrawText("[CombatMode HUD]", new Vector2(x, y), SharpDX.Color.LightSkyBlue);
+            y += lineHeight;
+            gfx.DrawText($"Style: {_activeStyle} | Filter: {_activeFilter}", new Vector2(x, y), SharpDX.Color.LightGray);
+            y += lineHeight;
+            gfx.DrawText($"Allowed targets: {_allowedTargetCount} | In-range: {_allowedTargetInRangeCount}", new Vector2(x, y), SharpDX.Color.LightGray);
+            y += lineHeight;
+            gfx.DrawText($"Combat enabled: {settings.EnableCombat.Value} | InCombat: {ctx.Combat.InCombat} | Nearby: {ctx.Combat.NearbyMonsterCount}", new Vector2(x, y), SharpDX.Color.LightGray);
+            y += lineHeight;
+            var bestTarget = ctx.Combat.BestTarget;
+            var bestTargetText = bestTarget != null ? $"Best target: {bestTarget.Id} ({bestTarget.Rarity})" : "Best target: none";
+            gfx.DrawText(bestTargetText, new Vector2(x, y), SharpDX.Color.LightGray);
         }
 
         private static bool IsAllowedByFilter(MonsterRarity rarity, CombatModeMonsterType filter)
@@ -126,6 +164,11 @@ namespace AutoExile.Modes
                 CombatModeMonsterType.UniqueOnly => rarity == MonsterRarity.Unique,
                 _ => true,
             };
+        }
+
+        public void Render(BotContext ctx)
+        {
+            RenderHud(ctx);
         }
     }
 
