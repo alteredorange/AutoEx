@@ -1088,7 +1088,7 @@ namespace AutoExile.Systems
             {
                 if (entry.Role != SkillRole.Self) continue;
                 if (entry.Skill != null && !entry.Skill.CanBeUsed) continue;
-                if (!CheckSkillConditions(gc, entry, settings)) continue;
+                if (!CheckSkillConditions(gc, entry, settings, out _)) continue;
 
                 UseSkill(gc, entry, null);
                 return true;
@@ -1113,51 +1113,85 @@ namespace AutoExile.Systems
             if (!BotInput.CanAct) return false;
             if ((DateTime.Now - _lastSkillUseAt).TotalMilliseconds < MinSkillIntervalMs) return false;
 
+            var debugReasons = new List<string>();
+
             foreach (var entry in _skillBar)
             {
                 // Self-role already handled by TickSelfSkills
                 if (entry.Role == SkillRole.Self) continue;
 
+                var name = entry.Skill?.Name ?? entry.Key.ToString();
+
                 // Universal gate: game says skill can't be used (cooldown/mana/souls)
-                if (entry.Skill != null && !entry.Skill.CanBeUsed) continue;
+                if (entry.Skill != null && !entry.Skill.CanBeUsed)
+                {
+                    debugReasons.Add($"{name}: Game blocked (CD/mana)");
+                    continue;
+                }
 
                 // Suppress cursor-moving skills during loot pickup to avoid cursor interference
                 if (SuppressTargetedSkills && (entry.Role == SkillRole.Enemy || entry.Role == SkillRole.Corpse))
+                {
+                    debugReasons.Add($"{name}: Looting");
                     continue;
+                }
 
                 // Targeting prerequisite: Enemy needs a target, Corpse needs a corpse.
                 // ForceInCombat mode: BestTarget may be null if all in-range monsters failed
                 // strict LOS (they still have positions). GetSkillTargetGrid falls back to
                 // PackCenter so the skill still fires toward the monster cluster.
-                if (entry.Role == SkillRole.Enemy && !InCombat) continue;
-                if (entry.Role == SkillRole.Enemy && BestTarget == null && !Profile.ForceInCombat) continue;
-                if (entry.Role == SkillRole.Corpse && !NearestCorpse.HasValue) continue;
+                if (entry.Role == SkillRole.Enemy && !InCombat)
+                {
+                    debugReasons.Add($"{name}: !InCombat");
+                    continue;
+                }
+                if (entry.Role == SkillRole.Enemy && BestTarget == null && !Profile.ForceInCombat)
+                {
+                    debugReasons.Add($"{name}: No BestTarget");
+                    continue;
+                }
+                if (entry.Role == SkillRole.Corpse && !NearestCorpse.HasValue)
+                {
+                    debugReasons.Add($"{name}: No corpse");
+                    continue;
+                }
 
                 // All "when to fire" logic is in conditions
-                if (!CheckSkillConditions(gc, entry, settings)) continue;
+                if (!CheckSkillConditions(gc, entry, settings, out string failReason))
+                {
+                    debugReasons.Add($"{name}: {failReason}");
+                    continue;
+                }
 
                 var targetGridPos = GetSkillTargetGrid(gc, entry);
                 UseSkill(gc, entry, targetGridPos);
                 return true;
             }
 
-            LastSkillAction = "no skill ready";
+            LastSkillAction = debugReasons.Count > 0 ? string.Join(" | ", debugReasons) : "no combat skills configured";
             return false;
         }
 
         /// <summary>
         /// Check per-skill user-configured conditions. Returns false to skip the skill.
         /// </summary>
-        private bool CheckSkillConditions(GameController gc, SkillBarEntry entry, BotSettings.BuildSettings settings)
+        private bool CheckSkillConditions(GameController gc, SkillBarEntry entry, BotSettings.BuildSettings settings, out string failReason)
         {
+            failReason = "";
             // Per-skill cast interval — prevents debuffs from overriding primary attacks
             if (entry.MinCastIntervalMs > 0 &&
                 (DateTime.Now - entry.LastCastAt).TotalMilliseconds < entry.MinCastIntervalMs)
+            {
+                failReason = $"cooldown ({entry.MinCastIntervalMs}ms)";
                 return false;
+            }
 
             // Require targetable — skip if target is invulnerable/untargetable
             if (entry.RequireTargetable && BestTarget != null && !BestTarget.IsTargetable)
+            {
+                failReason = "untargetable";
                 return false;
+            }
 
             // Target filter — restrict to certain rarities
             if (entry.TargetFilter != SkillTargetFilter.Any && BestTarget != null)
@@ -1165,15 +1199,24 @@ namespace AutoExile.Systems
                 var rarity = BestTarget.Rarity;
                 if (entry.TargetFilter == SkillTargetFilter.RareOrAbove &&
                     rarity != MonsterRarity.Rare && rarity != MonsterRarity.Unique)
+                {
+                    failReason = "needs Rare+";
                     return false;
+                }
                 if (entry.TargetFilter == SkillTargetFilter.UniqueOnly &&
                     rarity != MonsterRarity.Unique)
+                {
+                    failReason = "needs Unique";
                     return false;
+                }
             }
 
             // Min nearby enemies
             if (entry.MinNearbyEnemies > 0 && NearbyMonsterCount < entry.MinNearbyEnemies)
+            {
+                failReason = $"needs {entry.MinNearbyEnemies} nearby";
                 return false;
+            }
 
             // Buff/debuff presence check
             if (entry.OnlyWhenBuffMissing)
@@ -1183,18 +1226,27 @@ namespace AutoExile.Systems
                 if (entry.Role == SkillRole.Enemy && BestTarget != null)
                 {
                     if (HasDebuffOnTarget(BestTarget, entry.BuffDebuffName.Length > 0 ? entry.BuffDebuffName : entry.Skill?.InternalName ?? ""))
+                    {
+                        failReason = "debuff present";
                         return false;
+                    }
                 }
                 else
                 {
                     if (HasBuff(gc, entry.Skill, entry.BuffDebuffName))
+                    {
+                        failReason = "buff present";
                         return false;
+                    }
                 }
             }
 
             // Only on low life
             if (entry.OnlyOnLowLife && HpPercent >= settings.GuardHpThreshold.Value)
+            {
+                failReason = "not low HP";
                 return false;
+            }
 
             // Close enemies / max target range
             if (entry.MaxTargetRange > 0 && BestTarget != null)
@@ -1202,14 +1254,20 @@ namespace AutoExile.Systems
                 var playerGrid = gc.Player.GridPosNum;
                 var dist = Vector2.Distance(playerGrid, BestTarget.GridPosNum);
                 if (dist > entry.MaxTargetRange)
+                {
+                    failReason = "target too far";
                     return false;
+                }
             }
 
             // Summon recast — skip if enough minions deployed nearby
             if (entry.SummonRecast && entry.Skill != null)
             {
                 if (!ShouldResummon(entry.Skill, entry.Role, settings))
+                {
+                    failReason = "minions active";
                     return false;
+                }
             }
 
             return true;
@@ -1336,7 +1394,7 @@ namespace AutoExile.Systems
                 shouldRelease = true;
 
             // Conditions no longer met (target died, moved out of range, etc.)
-            if (!shouldRelease && !CheckSkillConditions(gc, _activeChannel, settings))
+            if (!shouldRelease && !CheckSkillConditions(gc, _activeChannel, settings, out _))
                 shouldRelease = true;
 
             // Combat suppressed
