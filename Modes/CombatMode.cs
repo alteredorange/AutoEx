@@ -9,8 +9,9 @@ namespace AutoExile.Modes
 {
     /// <summary>
     /// Combat Mode: engages monsters based on configured combat behavior and monster filter.
-    /// Lazy mode only fights when allowed monsters are already within combat range.
+    /// Lazy mode only fights when allowed monsters are already within combat range (may reposition for LOS).
     /// Aggressive mode will pursue allowed monsters across the map.
+    /// All = normal + magic + rare + unique; RareOrAbove = rare + unique; UniqueOnly = unique only.
     /// </summary>
     public class CombatMode : IBotMode
     {
@@ -21,7 +22,7 @@ namespace AutoExile.Modes
         private int _allowedTargetCount;
         private int _allowedTargetInRangeCount;
         private CombatModeStyle _activeStyle = CombatModeStyle.Lazy;
-        private CombatModeMonsterType _activeFilter = CombatModeMonsterType.Normal;
+        private CombatModeMonsterType _activeFilter = CombatModeMonsterType.All;
 
         public void OnEnter(BotContext ctx)
         {
@@ -65,9 +66,11 @@ namespace AutoExile.Modes
                 ctx.Combat.SetProfile(new CombatProfile
                 {
                     Enabled = true,
-                    Positioning = style == CombatModeStyle.Aggressive
-                        ? CombatPositioning.Aggressive
-                        : CombatPositioning.Melee,
+                    // Aggressive: pursue monsters anywhere on map.
+                    // Lazy: still use Aggressive positioning so CombatSystem will
+                    // reposition for LOS within range — the gate above already
+                    // ensures only in-range monsters trigger combat.
+                    Positioning = CombatPositioning.Aggressive,
                 });
             }
             else
@@ -75,7 +78,9 @@ namespace AutoExile.Modes
                 ctx.Combat.SetProfile(CombatProfile.Default);
             }
 
-            ctx.Combat.SuppressPositioning = style == CombatModeStyle.Lazy;
+            // Never suppress positioning — CombatSystem needs to reposition for LOS
+            // even in Lazy mode. The in-range target gate above prevents chasing far monsters.
+            ctx.Combat.SuppressPositioning = false;
             ctx.Combat.SuppressTargetedSkills = ctx.Interaction.IsBusy;
             ctx.Combat.Tick(ctx);
 
@@ -111,7 +116,8 @@ namespace AutoExile.Modes
             {
                 "Rare" => CombatModeMonsterType.RareOrAbove,
                 "Unique" => CombatModeMonsterType.UniqueOnly,
-                _ => CombatModeMonsterType.Normal,
+                // "All" and legacy "Normal" both map to All (every rarity)
+                _ => CombatModeMonsterType.All,
             };
         }
 
@@ -152,8 +158,15 @@ namespace AutoExile.Modes
             gfx.DrawText($"Combat enabled: {settings.EnableCombat.Value} | InCombat: {ctx.Combat.InCombat} | Nearby: {ctx.Combat.NearbyMonsterCount}", new Vector2(x, y), SharpDX.Color.LightGray);
             y += lineHeight;
             var bestTarget = ctx.Combat.BestTarget;
-            var bestTargetText = bestTarget != null ? $"Best target: {bestTarget.Id} ({bestTarget.Rarity})" : "Best target: none";
+            var bestTargetName = bestTarget?.RenderName ?? bestTarget?.Path ?? $"Id:{bestTarget?.Id}";
+            var bestTargetText = bestTarget != null ? $"Best target: {bestTargetName} ({bestTarget.Rarity})" : "Best target: none";
             gfx.DrawText(bestTargetText, new Vector2(x, y), SharpDX.Color.LightGray);
+            y += lineHeight;
+            gfx.DrawText($"Last action: {ctx.Combat.LastAction}", new Vector2(x, y), SharpDX.Color.LightGray);
+            y += lineHeight;
+            gfx.DrawText($"Last skill: {ctx.Combat.LastSkillAction}", new Vector2(x, y), SharpDX.Color.Yellow);
+            y += lineHeight;
+            gfx.DrawText($"Decision: {_decision}", new Vector2(x, y), SharpDX.Color.LightGray);
         }
 
         private static bool IsAllowedByFilter(MonsterRarity rarity, CombatModeMonsterType filter)
@@ -162,6 +175,7 @@ namespace AutoExile.Modes
             {
                 CombatModeMonsterType.RareOrAbove => rarity == MonsterRarity.Rare || rarity == MonsterRarity.Unique,
                 CombatModeMonsterType.UniqueOnly => rarity == MonsterRarity.Unique,
+                // All: targets every rarity (normal, magic, rare, unique)
                 _ => true,
             };
         }
@@ -180,6 +194,9 @@ namespace AutoExile.Modes
 
     public enum CombatModeMonsterType
     {
+        /// <summary>All monster rarities: normal, magic, rare, unique.</summary>
+        All,
+        /// <summary>Legacy alias — treated identically to All.</summary>
         Normal,
         RareOrAbove,
         UniqueOnly,

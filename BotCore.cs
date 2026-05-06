@@ -227,9 +227,14 @@ namespace AutoExile
                 Settings.Combat.Style.Value = savedCombatStyle;
 
             var savedCombatTarget = Settings.Combat.TargetType.Value;
-            Settings.Combat.TargetType.SetListValues(new[] { "Normal", "Rare", "Unique" }.ToList());
-            if (!string.IsNullOrEmpty(savedCombatTarget) && (savedCombatTarget == "Normal" || savedCombatTarget == "Rare" || savedCombatTarget == "Unique"))
-                Settings.Combat.TargetType.Value = savedCombatTarget;
+            // "All" replaces the legacy "Normal" label — targets every rarity.
+            // Keep "Normal" in the accepted set so saved configs don't break.
+            Settings.Combat.TargetType.SetListValues(new[] { "All", "Rare", "Unique" }.ToList());
+            if (!string.IsNullOrEmpty(savedCombatTarget) && (savedCombatTarget == "All" || savedCombatTarget == "Normal" || savedCombatTarget == "Rare" || savedCombatTarget == "Unique"))
+            {
+                // Migrate legacy "Normal" → "All" so the dropdown shows the current value
+                Settings.Combat.TargetType.Value = savedCombatTarget == "Normal" ? "All" : savedCombatTarget;
+            }
 
             // Populate mode dropdown and restore saved selection
             // Save value before SetListValues — it resets Value to first item
@@ -823,8 +828,8 @@ namespace AutoExile
             }
             if (Settings.Combat.TargetNormalHotkey.PressedOnce())
             {
-                Settings.Combat.TargetType.Value = "Normal";
-                LogMessage("[AutoExile] Combat target type set to Normal");
+                Settings.Combat.TargetType.Value = "All";
+                LogMessage("[AutoExile] Combat target type set to All (all monster rarities)");
             }
             if (Settings.Combat.TargetRareHotkey.PressedOnce())
             {

@@ -374,8 +374,8 @@ namespace AutoExile
             [Menu("Combat Style", "Lazy attacks only when monsters are already nearby; Aggressive pursues monsters to fight.")]
             public ListNode Style { get; set; } = new ListNode { Value = "Lazy" };
 
-            [Menu("Monster Target Type", "Normal attacks all monsters; Rare attacks only rares and uniques; Unique attacks only uniques.")]
-            public ListNode TargetType { get; set; } = new ListNode { Value = "Normal" };
+            [Menu("Monster Target Type", "All attacks every rarity (normal, magic, rare, unique); Rare attacks only rares and uniques; Unique attacks only uniques.")]
+            public ListNode TargetType { get; set; } = new ListNode { Value = "All" };
 
             [Menu("Show Combat HUD", "Display combat target diagnostics while Combat mode is active.")]
             public ToggleNode ShowHud { get; set; } = new ToggleNode(false);
@@ -383,7 +383,7 @@ namespace AutoExile
             [Menu("Combat Style Toggle", "Hotkey to switch between lazy and aggressive combat behavior.")]
             public HotkeyNode CombatStyleToggle { get; set; } = new HotkeyNode(Keys.D6);
 
-            [Menu("Target Normal Monsters", "Hotkey to select normal monsters for combat.")]
+            [Menu("Target All Monsters", "Hotkey to select all monsters (any rarity) for combat.")]
             public HotkeyNode TargetNormalHotkey { get; set; } = new HotkeyNode(Keys.D7);
 
             [Menu("Target Rare Monsters", "Hotkey to select rare and above monsters for combat.")]
