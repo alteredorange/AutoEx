@@ -97,11 +97,32 @@ namespace AutoExile.Modes
             {
                 _status = hasAllowedTarget ? $"Aggressive combat ({_allowedTargetCount} allowed targets)" : "Waiting for allowed targets";
                 _decision = hasAllowedTarget ? "pursuing allowed monsters" : "no allowed monsters present";
+                
+                // If CombatSystem wants to move (e.g. LOS blocked, or density > 15f), obey it.
+                if (ctx.Combat.WantsToMove && !ctx.Navigation.IsNavigating && !ctx.Interaction.IsBusy)
+                {
+                    ctx.Navigation.NavigateTo(gc, ctx.Combat.MoveTargetGrid);
+                    _decision = "repositioning for combat";
+                }
+                // If not in combat at all (targets out of range), pursue them across the map.
+                else if (!ctx.Combat.InCombat && hasAllowedTarget && !ctx.Navigation.IsNavigating && !ctx.Interaction.IsBusy)
+                {
+                    var closest = GetClosestAllowedTarget(gc, monsterFilter, allowDormant: true);
+                    if (closest != null)
+                    {
+                        ctx.Navigation.NavigateTo(gc, closest.GridPosNum);
+                        _decision = $"pursuing distant target";
+                    }
+                }
             }
             else
             {
                 _status = hasAllowedTargetInRange ? $"Lazy combat ({_allowedTargetInRangeCount} in range)" : "Waiting for targets in range";
                 _decision = hasAllowedTargetInRange ? "attacking in-range monsters" : "waiting for monsters to enter range";
+                
+                // Even in Lazy mode, CombatSystem might need to reposition locally for LOS
+                // if it's set to Melee positioning, etc., but since we set SuppressPositioning = true,
+                // WantsToMove shouldn't trigger. If it does, ignore it to stay stationary.
             }
         }
 
@@ -141,6 +162,30 @@ namespace AutoExile.Modes
                     count++;
             }
             return count;
+        }
+
+        private static Entity GetClosestAllowedTarget(GameController gc, CombatModeMonsterType filter, bool allowDormant)
+        {
+            var playerGrid = gc.Player?.GridPosNum ?? Vector2.Zero;
+            Entity closest = null;
+            float closestDist = float.MaxValue;
+            
+            foreach (var entity in gc.EntityListWrapper.OnlyValidEntities.Where(e => e.Type == EntityType.Monster && e.IsHostile && e.IsAlive))
+            {
+                if (!allowDormant && !entity.IsTargetable)
+                    continue;
+
+                if (IsAllowedByFilter(entity.Rarity, filter))
+                {
+                    var dist = Vector2.Distance(entity.GridPosNum, playerGrid);
+                    if (dist < closestDist)
+                    {
+                        closestDist = dist;
+                        closest = entity;
+                    }
+                }
+            }
+            return closest;
         }
 
         private void RenderHud(BotContext ctx)
