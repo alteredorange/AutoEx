@@ -860,8 +860,15 @@ namespace AutoExile.Systems
 
                 // Skip slots where no actual skill is equipped in-game
                 // (settings may still have Key=Q, Role=Self from a previously equipped skill)
-                if (matchedSkill == null)
-                    continue;
+                // if (matchedSkill == null)
+                //     continue;
+
+                // We no longer skip slots if matchedSkill == null.
+                // If the memory reader fails to map the ActorSkill (e.g. ServerData is desynced),
+                // we still want to blindly press the user's configured key!
+                // The HUD will show that the skill is missing its memory component if needed.
+
+
 
                 // Parse condition settings
                 Enum.TryParse<SkillTargetFilter>(slotConfig.TargetFilter.Value, out var targetFilter);
