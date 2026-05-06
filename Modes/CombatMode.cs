@@ -9,8 +9,9 @@ namespace AutoExile.Modes
 {
     /// <summary>
     /// Combat Mode: engages monsters based on configured combat behavior and monster filter.
-    /// Lazy mode only fights when allowed monsters are already within combat range (may reposition for LOS).
-    /// Aggressive mode will pursue allowed monsters across the map.
+    /// Lazy: stands still, attacks any matching monster already within combat range. No pathfinding.
+    ///       ForceInCombat bypasses the LOS scan so AoE skills (Rolling Magma, etc.) fire immediately.
+    /// Aggressive: pursues matching monsters anywhere on the map, pathfinding as needed.
     /// All = normal + magic + rare + unique; RareOrAbove = rare + unique; UniqueOnly = unique only.
     /// </summary>
     public class CombatMode : IBotMode
@@ -66,11 +67,14 @@ namespace AutoExile.Modes
                 ctx.Combat.SetProfile(new CombatProfile
                 {
                     Enabled = true,
-                    // Aggressive: pursue monsters anywhere on map.
-                    // Lazy: still use Aggressive positioning so CombatSystem will
-                    // reposition for LOS within range — the gate above already
-                    // ensures only in-range monsters trigger combat.
                     Positioning = CombatPositioning.Aggressive,
+                    // Lazy: mode has already verified targets are in range — bypass the
+                    // CombatSystem LOS gate so skills fire without requiring a strict
+                    // HasLineOfSight check. Stationary AoE skills (Rolling Magma, etc.)
+                    // handle hit detection themselves.
+                    // Aggressive: let CombatSystem run its own scan so it can path toward
+                    // monsters that are out of range but not yet blocked by LOS.
+                    ForceInCombat = style == CombatModeStyle.Lazy,
                 });
             }
             else
@@ -78,9 +82,9 @@ namespace AutoExile.Modes
                 ctx.Combat.SetProfile(CombatProfile.Default);
             }
 
-            // Never suppress positioning — CombatSystem needs to reposition for LOS
-            // even in Lazy mode. The in-range target gate above prevents chasing far monsters.
-            ctx.Combat.SuppressPositioning = false;
+            // Lazy: stand still and fight what's already in range — no pathfinding.
+            // Aggressive: allow CombatSystem to move toward out-of-range monsters.
+            ctx.Combat.SuppressPositioning = style == CombatModeStyle.Lazy;
             ctx.Combat.SuppressTargetedSkills = ctx.Interaction.IsBusy;
             ctx.Combat.Tick(ctx);
 
@@ -96,8 +100,8 @@ namespace AutoExile.Modes
             }
             else
             {
-                _status = hasAllowedTargetInRange ? $"Lazy combat ({_allowedTargetInRangeCount} in range)" : "Waiting for allowed targets";
-                _decision = hasAllowedTargetInRange ? "attacking nearby monsters" : "waiting for nearby targets";
+                _status = hasAllowedTargetInRange ? $"Lazy combat ({_allowedTargetInRangeCount} in range)" : "Waiting for targets in range";
+                _decision = hasAllowedTargetInRange ? "attacking in-range monsters" : "waiting for monsters to enter range";
             }
         }
 

@@ -273,6 +273,13 @@ namespace AutoExile.Systems
             // Scan threats (use entity cache when available for pre-filtered monster list)
             ScanThreats(gc, settings, ctx.Entities);
 
+            // ForceInCombat override: mode has already confirmed targets are in range
+            // (e.g. CombatMode.CountAllowedTargets). Bypass the LOS reachability gate
+            // so stationary skills (Rolling Magma, ground AoE) fire regardless of whether
+            // every monster passes a strict HasLineOfSight check.
+            if (Profile.ForceInCombat)
+                InCombat = true;
+
             // Check if active channel should be released (target died, conditions changed, etc.)
             ReleaseChannelIfNeeded(gc, settings);
 
@@ -1911,6 +1918,15 @@ namespace AutoExile.Systems
         /// Used by blight sweep to prioritize monsters threatening the pump hub.
         /// </summary>
         public Vector2? DefenseAnchor { get; set; }
+
+        /// <summary>
+        /// When true, InCombat is forced to true after ScanThreats completes,
+        /// bypassing the LOS-based reachability check. Use for Lazy/stationary combat
+        /// where the mode has already confirmed targets are in range — the skill itself
+        /// (e.g. Rolling Magma, ground-targeted AoE) handles hit detection.
+        /// Has no effect when Enabled is false.
+        /// </summary>
+        public bool ForceInCombat { get; set; }
 
         public static CombatProfile Default => new() { Enabled = false };
     }
